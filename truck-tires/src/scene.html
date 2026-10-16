@@ -262,14 +262,25 @@ function drawBody(ch, pose) {
   for (let i = 0; i < 2; i++) {
     const side = i === 0 ? -1 : 1;
     const { j } = ik(hj[i], pose.feet[i], L.thigh, L.shin, (a, b) => (a.x - b.x) * side > 0);
-    limb([hj[i], j, { x: pose.feet[i].x, y: pose.feet[i].y - 10 }], [L.legW, L.legW - 3], [C.pants, C.pants]);
-    // ботинок
+    limb([hj[i], j, { x: pose.feet[i].x, y: pose.feet[i].y - 18 }], [L.legW, L.legW - 3], [C.pants, C.pants]);
+    // ботинок: голенище, носок и рифлёная подошва
     ctx.save();
-    ctx.translate(pose.feet[i].x + side * 4, pose.feet[i].y - 7);
-    ellipse(0, 0, 17, 10);
+    ctx.translate(pose.feet[i].x + side * 3, pose.feet[i].y);
+    ctx.scale(side, 1);
+    ctx.beginPath();
+    ctx.moveTo(-11, -22);
+    ctx.lineTo(9, -22);
+    ctx.quadraticCurveTo(12, -12, 16, -10);
+    ctx.quadraticCurveTo(24, -8, 23, -4);
+    ctx.lineTo(-14, -4);
+    ctx.quadraticCurveTo(-15, -14, -11, -22);
+    ctx.closePath();
     fillStroke(C.boots, 3.5);
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ellipse(-side * 3, -4, 7, 3); ctx.fill();
+    rrect(-16, -6, 41, 7, 3); fillStroke('#2a1d16', 3);
+    ctx.strokeStyle = 'rgba(255,240,210,0.55)'; ctx.lineWidth = 1.8;
+    for (const y of [-19, -15]) { ctx.beginPath(); ctx.moveTo(-6, y); ctx.lineTo(5, y); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ellipse(15, -10, 5, 2.5, -0.3); ctx.fill();
     ctx.restore();
   }
 
@@ -356,19 +367,69 @@ function drawHead(ch, c, look, lean) {
   ctx.restore();
 }
 
-function drawArms(ch, rg, hands) {
-  const { L, sh } = rg;
+function drawArms(ch, rg, hands, grip = 0) {
+  const { L, sh, neck } = rg;
   const C = ch.colors;
   for (let i = 0; i < 2; i++) {
     const side = i === 0 ? -1 : 1;
     const { j, end } = ik(sh[i], hands[i], L.upper, L.fore,
       (a, b) => (a.x - b.x) * side + (a.y - b.y) * 0.3 > 0);
-    limb([sh[i], j, end], [L.armW, L.armW - 3], [C.sleeve, C.forearm]);
-    circle(end.x, end.y, 10.5);
-    fillStroke(C.glove, 3.5);
-    ctx.beginPath(); ctx.arc(end.x - 2, end.y - 3, 4, Math.PI, 1.8 * Math.PI);
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.stroke();
+    const ang = Math.atan2(end.y - j.y, end.x - j.x);
+    // запястье чуть не доходит до цели: ладонь ложится на точку захвата
+    const wrist = { x: end.x - Math.cos(ang) * 7, y: end.y - Math.sin(ang) * 7 };
+    limb([sh[i], j, wrist], [L.armW, L.armW - 4], [C.sleeve, C.forearm]);
+    // манжета закатанного рукава
+    const cu = { x: lerp(sh[i].x, j.x, 0.86), y: lerp(sh[i].y, j.y, 0.86) };
+    const ua = Math.atan2(j.y - sh[i].y, j.x - sh[i].x);
+    ctx.save(); ctx.translate(cu.x, cu.y); ctx.rotate(ua);
+    rrect(-5, -L.armW / 2 - 3, 10, L.armW + 6, 4); fillStroke(C.cuff || C.sleeve, 3);
+    ctx.restore();
+    drawHand(wrist, ang, side, neck, grip, C.glove);
   }
+}
+
+// Перчатка: ладонь, четыре пальца и большой палец; curl 0..1 — сжатие (хват шины)
+function drawHand(w, ang, side, neck, curl, col) {
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  // большой палец — к середине тела, а если рука почти горизонтальна — вверх
+  const px = -dy, py = dx;
+  let ts = Math.sign(px * (neck.x - w.x)) || -side;
+  if (Math.abs(px) < 0.35) ts = py > 0 ? -1 : 1;
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  ctx.rotate(ang);
+  const fl = lerp(12, 5, curl);           // длина пальцев
+  const fingers = [-6.5, -2.2, 2.2, 6.5].map((y, k) => ({ y: y * 0.95, len: fl * [0.82, 1, 0.97, 0.78][k] }));
+  const thumb = { x0: 4, y0: ts * 6, x1: lerp(13, 10, curl), y1: ts * lerp(14, 10, curl) };
+  const seg2 = (x0, y0, x1, y1, wd, c) => {
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+    ctx.lineWidth = wd; ctx.strokeStyle = c; ctx.lineCap = 'round'; ctx.stroke();
+  };
+  // контур
+  for (const f of fingers) seg2(12, f.y, 12 + f.len, f.y * 1.08, 5.4 + 6, INK);
+  seg2(thumb.x0, thumb.y0, thumb.x1, thumb.y1, 6.5 + 6, INK);
+  ellipse(6, 0, 11.5, 10.5); ctx.fillStyle = INK; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(6, 0, 11.5 + 3, 10.5 + 3, 0, 0, TAU); ctx.fill();
+  rrect(-7, -10.5, 10, 21, 4); ctx.fill(); rrect(-9.5, -13, 15, 26, 5); ctx.fill();
+  // заливка
+  rrect(-6.5, -10, 9, 20, 3); ctx.fillStyle = shade(col, -0.18); ctx.fill();
+  ellipse(6, 0, 11.5, 10.5); ctx.fillStyle = col; ctx.fill();
+  for (const f of fingers) seg2(12, f.y, 12 + f.len, f.y * 1.08, 5.4, col);
+  seg2(thumb.x0, thumb.y0, thumb.x1, thumb.y1, 6.5, col);
+  // щели между пальцами и костяшки
+  ctx.strokeStyle = 'rgba(42,26,20,0.75)'; ctx.lineWidth = 1.6;
+  for (const y of [-4.3, 0, 4.3]) { ctx.beginPath(); ctx.moveTo(12, y); ctx.lineTo(12 + fl * 0.85, y * 1.08); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(4, 0, 9, -0.9, 0.9); ctx.strokeStyle = 'rgba(42,26,20,0.35)'; ctx.stroke();
+  // блик
+  ctx.beginPath(); ctx.arc(4, -ts * 2, 5, -ts * 2.2 - 0.5, -ts * 2.2 + 0.5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+}
+
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = c => clamp(Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k), 0, 255);
+  return `rgb(${f(n >> 16)},${f(n >> 8 & 255)},${f(n & 255)})`;
 }
 
 // --- три грузчика ---
@@ -378,7 +439,7 @@ const SIZE_C = { torso: 72, shoulder: 31, hipW: 17, head: 34, thigh: 45, shin: 4
 
 const chA = {
   size: SIZE_A, scaleShadow: 1,
-  colors: { skin: '#f2c9a0', nose: '#eab38a', shirt: '#c8362d', sleeve: '#c8362d', forearm: '#f2c9a0', pants: '#3d5f8f', boots: '#5b3a24', glove: '#e9b437', belt: '#4a2f1d' },
+  colors: { skin: '#f2c9a0', nose: '#eab38a', shirt: '#c8362d', sleeve: '#c8362d', forearm: '#f2c9a0', pants: '#3d5f8f', boots: '#5b3a24', glove: '#e9b437', belt: '#4a2f1d', cuff: '#a82a22' },
   torsoDetail(tw, ww, th) { // фланелевая клетка
     ctx.strokeStyle = 'rgba(30,10,10,0.38)'; ctx.lineWidth = 5;
     for (let x = -tw - 10; x < tw + 10; x += 15) { ctx.beginPath(); ctx.moveTo(x, -th - 20); ctx.lineTo(x, 10); ctx.stroke(); }
@@ -412,7 +473,7 @@ const chA = {
 
 const chB = {
   size: SIZE_B, scaleShadow: 0.9,
-  colors: { skin: '#c98c62', nose: '#b97b52', shirt: '#f2d06b', sleeve: '#f2d06b', forearm: '#c98c62', pants: '#4f7d4a', boots: '#4a3122', glove: '#f08a3c' },
+  colors: { skin: '#c98c62', nose: '#b97b52', shirt: '#f2d06b', sleeve: '#f2d06b', forearm: '#c98c62', pants: '#4f7d4a', boots: '#4a3122', glove: '#f08a3c', cuff: '#e3bd52' },
   torsoDetail(tw, ww, th) { // комбинезон
     path([[-ww + 2, 10], [-ww + 2, -th * 0.55], [ww - 2, -th * 0.55], [ww - 2, 10]]);
     ctx.fillStyle = '#4f7d4a'; ctx.fill();
@@ -445,7 +506,7 @@ const chB = {
 
 const chC = {
   size: SIZE_C, scaleShadow: 1.15,
-  colors: { skin: '#f0c49b', nose: '#e5ac85', shirt: '#7c8a96', sleeve: '#7c8a96', forearm: '#f0c49b', pants: '#2f3d5c', boots: '#3f2a1c', glove: '#e9b437', belt: '#3a2618' },
+  colors: { skin: '#f0c49b', nose: '#e5ac85', shirt: '#7c8a96', sleeve: '#7c8a96', forearm: '#f0c49b', pants: '#2f3d5c', boots: '#3f2a1c', glove: '#e9b437', belt: '#3a2618', cuff: '#66737e' },
   torsoDetail(tw, ww, th) { // сигнальный жилет
     ctx.fillStyle = '#f07d2a';
     path([[-tw - 10, -th - 10], [-6, -th - 10], [-10, 12], [-ww - 20, 12]]); ctx.fill();
@@ -504,7 +565,7 @@ function poseA(t) {
   const phi = lerp(42, 82, smooth(seg(tau, 1.15, 1.45)));
   const hands = [mixP(free[0], grip(ts, phi, -1), w), mixP(free[1], grip(ts, phi, 1), w)];
   pose.look = lookAt(rg, ts);
-  return { pose, hands };
+  return { pose, hands, grip: w };
 }
 
 function poseB(t) {
@@ -523,7 +584,7 @@ function poseB(t) {
   const w = tau < 2.4 ? smooth(seg(tau, 1.95, 2.15)) : 1 - smooth(seg(tau, 2.66, 2.76));
   const hands = [mixP(free[0], grip(ts, 82, -1), w), mixP(free[1], grip(ts, 82, 1), w)];
   pose.look = lookAt(rg, ts);
-  return { pose, hands };
+  return { pose, hands, grip: w };
 }
 
 function poseC(t) {
@@ -543,7 +604,7 @@ function poseC(t) {
   const phi = lerp(82, 55, smooth(seg(tau, 3.2, 3.56)));
   const hands = [mixP(free[0], grip(ts, phi, -1), w), mixP(free[1], grip(ts, phi, 1), w)];
   pose.look = lookAt(rg, ts);
-  return { pose, hands };
+  return { pose, hands, grip: w };
 }
 
 function lookAt(rg, ts) {
@@ -1029,9 +1090,9 @@ function render(t) {
   drawShedFront(t);
   drawTruckFront(t);
   drawExhaust(t);
-  drawArms(chC, rC, C.hands);
-  drawArms(chB, rB, B.hands);
-  drawArms(chA, rA, A.hands);
+  drawArms(chC, rC, C.hands, C.grip);
+  drawArms(chB, rB, B.hands, B.grip);
+  drawArms(chA, rA, A.hands, A.grip);
   drawForeground(t);
   drawLeaves(t);
   grade();
